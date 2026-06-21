@@ -1,0 +1,79 @@
+rules_version = '2';
+
+// ===============================================================
+// Assumed Data Model
+// ===============================================================
+//
+// Collection: contactSubmissions
+// Document ID: auto-generated
+// Fields:
+//   - name: string (required, 2-100 chars) - submitter name
+//   - mobile: string (required, exactly 10 digits) - submitter phone
+//   - email: string (required, valid email, max 254 chars) - submitter email
+//   - message: string (required, 10-2000 chars) - inquiry message
+//   - submittedAt: timestamp (required, immutable, server-set) - submission time
+//
+// Access pattern:
+//   - Public website visitors may CREATE submissions only.
+//   - No client read, update, or delete access (admin via Firebase Console).
+//
+// ===============================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+
+    function validStringLength(field, minLen, maxLen) {
+      return request.resource.data[field] is string
+        && request.resource.data[field].size() >= minLen
+        && request.resource.data[field].size() <= maxLen;
+    }
+
+    function isValidEmail(email) {
+      return email is string
+        && email.matches('^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$');
+    }
+
+    function isValidMobile(mobile) {
+      return mobile is string
+        && mobile.matches('^[0-9]{10}$');
+    }
+
+    function isRecentTimestamp(time) {
+      return time is timestamp
+        && time > request.time - duration.value(5, 'm')
+        && time <= request.time;
+    }
+
+    function isValidContactSubmission(data) {
+      return hasOnlyAllowedFields(['name', 'mobile', 'email', 'message', 'submittedAt'])
+        && hasRequiredFields(['name', 'mobile', 'email', 'message', 'submittedAt'])
+        && validStringLength('name', 2, 100)
+        && isValidMobile(data.mobile)
+        && validStringLength('email', 5, 254)
+        && isValidEmail(data.email)
+        && validStringLength('message', 10, 2000)
+        && isRecentTimestamp(data.submittedAt);
+    }
+
+    // ===============================================================
+    // Collection Rules
+    // ===============================================================
+
+    match /contactSubmissions/{submissionId} {
+      allow create: if isValidContactSubmission(request.resource.data);
+      allow read, update, delete: if false;
+    }
+  }
+}
